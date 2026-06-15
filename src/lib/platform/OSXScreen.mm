@@ -34,6 +34,7 @@
 #include "platform/OSXScreenSaver.h"
 
 #include <AppKit/NSEvent.h>
+#include <AppKit/NSRunningApplication.h>
 #include <AvailabilityMacros.h>
 #include <IOKit/hidsystem/event_status_driver.h>
 #include <dispatch/dispatch.h>
@@ -65,6 +66,15 @@ static const double kCarbonLoopWaitTimeout = 10.0;
 static inline bool needsEventNumber()
 {
   return NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27;
+}
+
+static AXUIElementRef copyWindowElement(AXUIElementRef element)
+{
+  CFTypeRef window = nullptr;
+  if (AXUIElementCopyAttributeValue(element, kAXWindowAttribute, &window) == kAXErrorSuccess && window != nullptr) {
+    return (AXUIElementRef)window;
+  }
+  return nullptr;
 }
 
 int getSecureInputEventPID();
@@ -501,6 +511,66 @@ void OSXScreen::postMouseEvent(CGPoint &pos) const
   CFRelease(event);
 }
 
+void OSXScreen::activateWindowAtCursor(CGPoint pos) const
+{
+  if (!AXIsProcessTrusted()) {
+    return;
+  }
+
+  AXUIElementRef system = AXUIElementCreateSystemWide();
+  if (system == nullptr) {
+    return;
+  }
+
+  AXUIElementRef element = nullptr;
+  AXError error =
+      AXUIElementCopyElementAtPosition(system, static_cast<float>(pos.x), static_cast<float>(pos.y), &element);
+  CFRelease(system);
+  if (error != kAXErrorSuccess || element == nullptr) {
+    return;
+  }
+
+  AXUIElementRef window = copyWindowElement(element);
+  if (window == nullptr) {
+    CFRelease(element);
+    return;
+  }
+
+  pid_t pid = 0;
+  if (AXUIElementGetPid(element, &pid) != kAXErrorSuccess) {
+    AXUIElementGetPid(window, &pid);
+  }
+
+  AXUIElementRef app = nullptr;
+  if (pid > 0) {
+    app = AXUIElementCreateApplication(pid);
+  }
+
+  AXUIElementSetAttributeValue(window, kAXMainAttribute, kCFBooleanTrue);
+  AXUIElementPerformAction(window, kAXRaiseAction);
+
+  if (app != nullptr) {
+    AXUIElementSetAttributeValue(app, kAXFrontmostAttribute, kCFBooleanTrue);
+    AXUIElementSetAttributeValue(app, kAXFocusedWindowAttribute, window);
+  }
+
+  if (pid > 0) {
+    @autoreleasepool {
+      NSRunningApplication *runningApp = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+      if (runningApp != nil && ![runningApp isActive]) {
+        [runningApp unhide];
+        [runningApp activateWithOptions:0];
+      }
+    }
+  }
+
+  if (app != nullptr) {
+    CFRelease(app);
+  }
+  CFRelease(window);
+  CFRelease(element);
+}
+
 void OSXScreen::fakeMouseButton(ButtonID id, bool press)
 {
   // Buttons are indexed from one, but the button down array is indexed from zero
@@ -554,6 +624,11 @@ void OSXScreen::fakeMouseButton(ButtonID id, bool press)
 
   MouseButtonEventMapType thisButtonMap = MouseButtonEventMap[index];
   CGEventType type = thisButtonMap[state];
+
+  if (press) {
+    // Some macOS versions no longer promote inactive windows for synthetic HID clicks.
+    activateWindowAtCursor(pos);
+  }
 
   CGEventRef event = CGEventCreateMouseEvent(nullptr, type, pos, static_cast<CGMouseButton>(index));
 
