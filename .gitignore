@@ -5,6 +5,8 @@
 
 # temp dirs created during build
 /build
+# Qt installed by `just setup` (see .mise.toml)
+/.qt
 /dist
 /deps
 /tmp

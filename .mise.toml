@@ -1,0 +1,19 @@
+[tools]
+cmake = "4.4.3"
+ninja = "1.13.2"
+"pypi:aqtinstall" = "3.3.0"
+
+[env]
+QT_VERSION = "6.9.3"
+# CMake finds Qt here; populated by `just setup`.
+CMAKE_PREFIX_PATH = "{{config_root}}/.qt/6.9.3/macos"
+
+[tasks.qt]
+description = "Install the pinned Qt into .qt/ (skips if present)"
+run = '''
+if [ -d "$MISE_CONFIG_ROOT/.qt/$QT_VERSION/macos" ]; then
+  echo "Qt $QT_VERSION already installed"
+else
+  aqt install-qt mac desktop "$QT_VERSION" --outputdir "$MISE_CONFIG_ROOT/.qt"
+fi
+'''
