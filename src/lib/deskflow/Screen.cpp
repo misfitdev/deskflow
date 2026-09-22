@@ -270,6 +270,12 @@ void Screen::mouseWheel(int32_t xDelta, int32_t yDelta) const
   m_screen->fakeMouseWheel({xDelta, yDelta});
 }
 
+void Screen::gestureSwipe(SwipeDirection direction) const
+{
+  assert(!m_isPrimary);
+  m_screen->fakeGestureSwipe(direction);
+}
+
 void Screen::resetOptions()
 {
   // reset options

@@ -90,6 +90,9 @@ Server::Server(ServerConfig &config, PrimaryClient *primaryClient, deskflow::Scr
   m_events->addHandler(EventTypes::PrimaryScreenWheel, m_primaryClient->getEventTarget(), [this](const auto &e) {
     handleWheelEvent(e);
   });
+  m_events->addHandler(EventTypes::PrimaryScreenSwipe, m_primaryClient->getEventTarget(), [this](const auto &e) {
+    handleSwipeEvent(e);
+  });
   m_events->addHandler(
       EventTypes::PrimaryScreenSaverActivated, m_primaryClient->getEventTarget(),
       [this](const auto &) { onScreensaver(true); }
@@ -162,6 +165,7 @@ Server::~Server()
   m_events->removeHandler(PrimaryScreenMotionOnPrimary, m_primaryClient->getEventTarget());
   m_events->removeHandler(PrimaryScreenMotionOnSecondary, m_primaryClient->getEventTarget());
   m_events->removeHandler(PrimaryScreenWheel, m_primaryClient->getEventTarget());
+  m_events->removeHandler(PrimaryScreenSwipe, m_primaryClient->getEventTarget());
   m_events->removeHandler(PrimaryScreenSaverActivated, m_primaryClient->getEventTarget());
   m_events->removeHandler(PrimaryScreenSaverDeactivated, m_primaryClient->getEventTarget());
   m_events->removeHandler(PrimaryScreenFakeInputBegin, m_inputFilter);
@@ -1273,6 +1277,12 @@ void Server::handleWheelEvent(const Event &event)
   onMouseWheel(info->m_xDelta, info->m_yDelta);
 }
 
+void Server::handleSwipeEvent(const Event &event)
+{
+  const auto *info = static_cast<IPlatformScreen::SwipeInfo *>(event.getData());
+  onGestureSwipe(info->m_direction);
+}
+
 void Server::handleSwitchWaitTimeout()
 {
   // ignore if mouse is locked to screen
@@ -1884,6 +1894,15 @@ void Server::onMouseWheel(int32_t xDelta, int32_t yDelta)
 
   // relay
   m_active->mouseWheel(xDelta, yDelta);
+}
+
+void Server::onGestureSwipe(SwipeDirection direction)
+{
+  LOG_VERBOSE("onGestureSwipe %s", swipeDirectionName(direction));
+  assert(m_active != nullptr);
+
+  // relay
+  m_active->gestureSwipe(direction);
 }
 
 bool Server::addClient(BaseClientProxy *client)

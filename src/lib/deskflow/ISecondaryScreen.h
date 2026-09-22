@@ -10,6 +10,7 @@
 
 #include "common/Coordinate.h"
 #include "common/Settings.h"
+#include "deskflow/GestureTypes.h"
 #include "deskflow/MouseTypes.h"
 
 //! Secondary screen interface
@@ -56,6 +57,16 @@ public:
    * @param delta the raw delta to fake
    */
   virtual void fakeMouseWheel(ScrollDelta delta) const = 0;
+
+  /**
+   * @brief Synthesize a multi-finger trackpad swipe
+   * Not pure virtual: only platforms that can synthesize swipes override it.
+   * The argument is the navigation the swipe should trigger.
+   */
+  virtual void fakeGestureSwipe(SwipeDirection) const
+  {
+    // do nothing
+  }
 
   /**
    * @brief Applies any scroll modfifers to the provided delta, This should only be done inside the subclasses

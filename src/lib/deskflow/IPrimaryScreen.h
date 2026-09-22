@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "deskflow/GestureTypes.h"
 #include "deskflow/KeyTypes.h"
 #include "deskflow/MouseTypes.h"
 
@@ -56,6 +57,15 @@ public:
   public:
     int32_t m_xDelta;
     int32_t m_yDelta;
+  };
+  //! Trackpad swipe event data
+  class SwipeInfo
+  {
+  public:
+    static SwipeInfo *alloc(SwipeDirection direction);
+
+  public:
+    SwipeDirection m_direction;
   };
   //! Hot key event data
   class HotKeyInfo

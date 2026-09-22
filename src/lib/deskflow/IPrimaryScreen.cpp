@@ -59,6 +59,17 @@ IPrimaryScreen::WheelInfo *IPrimaryScreen::WheelInfo::alloc(int32_t xDelta, int3
 }
 
 //
+// IPrimaryScreen::SwipeInfo
+//
+
+IPrimaryScreen::SwipeInfo *IPrimaryScreen::SwipeInfo::alloc(SwipeDirection direction)
+{
+  auto *info = (SwipeInfo *)malloc(sizeof(SwipeInfo));
+  info->m_direction = direction;
+  return info;
+}
+
+//
 // IPrimaryScreen::HotKeyInfo
 //
 

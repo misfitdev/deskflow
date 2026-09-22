@@ -45,7 +45,7 @@ static const int16_t kProtocolMajorVersion = 1;
  * @note When incrementing the minor version, the Deskflow application version should also increment
  * @since Protocol version 1.0
  */
-static const int16_t kProtocolMinorVersion = 8;
+static const int16_t kProtocolMinorVersion = 9;
 
 /**
  * @brief Default TCP port for Deskflow connections
@@ -862,6 +862,41 @@ extern const char *const kMsgDMouseWheel;
  * @since Protocol version 1.0
  */
 extern const char *const kMsgDMouseWheel1_0;
+
+/**
+ * @brief Multi-finger trackpad swipe
+ *
+ * **Message Code**: `"DGSW"`
+ * **Direction**: Primary → Secondary
+ * **Format**: `"DGSW%1i"`
+ * **Parameters**:
+ * - `$1`: Swipe direction (1 byte, unsigned), a SwipeDirection value
+ *
+ * Sent once per completed swipe, as soon as its direction is known. The
+ * secondary replays it as a native swipe, so Spaces and Mission Control
+ * navigation work from a remote trackpad. Finger count is not sent: macOS
+ * reports 3 and 4 finger dock swipes identically.
+ *
+ * **Directions**:
+ * - `1` Left: previous Space
+ * - `2` Right: next Space
+ * - `3` Up: Mission Control
+ * - `4` Down: App Expose, or close Mission Control
+ *
+ * Secondaries must ignore unknown direction values. Secondaries that cannot
+ * synthesize swipes ignore the message.
+ *
+ * **Example**:
+ *
+ * Move to the next Space
+ * ```
+ * "DGSW\x02"
+ * ```
+ *
+ * @see SwipeDirection
+ * @since Protocol version 1.9
+ */
+extern const char *const kMsgDGestureSwipe;
 
 /** @} */ // end of protocol_mouse group
 

@@ -154,6 +154,7 @@ This table lists all protocol messages in alphabetical order. For a typical sequ
 | [**DCLP**](@ref kMsgDClipboard) | @ref kMsgDClipboard | Data | Both | Clipboard data | [MsgSize](#constraint-protocol-max-message-length) | 1.0+ |
 | [**DDRG**](@ref kMsgDDragInfo) | @ref kMsgDDragInfo | Data | Server→Client | Drag file info | [MsgSize](#constraint-protocol-max-message-length), [ListSize](#constraint-max-list) | 1.5+ |
 | [**DFTR**](@ref kMsgDFileTransfer) | @ref kMsgDFileTransfer | Data | Both | File transfer data | [MsgSize](#constraint-protocol-max-message-length) | 1.5+ |
+| [**DGSW**](@ref kMsgDGestureSwipe) | @ref kMsgDGestureSwipe | Data | Server→Client | Trackpad swipe | [MsgSize](#constraint-protocol-max-message-length) | 1.9+ |
 | [**DINF**](@ref kMsgDInfo) | @ref kMsgDInfo | Data | Client→Server | Screen information | [MsgSize](#constraint-protocol-max-message-length) | 1.0+ |
 | [**DKDL**](@ref kMsgDKeyDownLang) | @ref kMsgDKeyDownLang | Data | Server→Client | Key down with language | [MsgSize](#constraint-protocol-max-message-length), [KeyMap](#constraint-keymap) | 1.8+ |
 | [**DKDN**](@ref kMsgDKeyDown) | @ref kMsgDKeyDown | Data | Server→Client | Key down | [MsgSize](#constraint-protocol-max-message-length), [KeyMap](#constraint-keymap) | 1.1+ |
@@ -290,6 +291,7 @@ A modifier (modifier mask) represents the state of modifier keys (like Shift, Co
 | **1.6** | Jan 2014 | Synergy | Clipboard streaming | 1.6+ |
 | **1.7** | Nov 2021 | Synergy | Secure input notifications | 1.7+ |
 | **1.8** | Jun 2025 | Synergy | Language synchronization | 1.8+ |
+| **1.9** | Sep 2026 | Deskflow | Trackpad swipes (@ref kMsgDGestureSwipe), macOS to macOS only | 1.9+ |
 
 ### Version Migration Guide
 
@@ -315,7 +317,7 @@ std::string server_version, server_name;
 parse_hello(hello, &server_version, &server_name);
 
 // 3. Send HelloBack to server
-std::string client_version = "1.8";
+std::string client_version = "1.9";
 std::string client_name = "MyClient";
 send_hello_back(client_version, client_name);
 
@@ -368,7 +370,7 @@ Client                                 Server
   |                                      | TCP connection established
   |                                      |
   | ◄─────────────────────────────────── |
-  | "Deskflow" + version (1.8)           | Hello message
+  | "Deskflow" + version (1.9)           | Hello message
   |                                      |
   | "Deskflow" + version + name          |
   | ───────────────────────────────────► | HelloBack message
@@ -496,6 +498,11 @@ For platform-specific implementation details, refer to:
   - Drag-and-drop initiation
   - Chunked file transfer
   - Progress tracking
+
+- **Trackpad Swipes** (v1.9+)
+  - Multi-finger swipes for Spaces and Mission Control (@ref kMsgDGestureSwipe)
+  - Sent once per swipe, as soon as its direction is known
+  - macOS 27 or later on both ends; other secondaries ignore the message
 
 - **Security Features**
   - TLS/SSL encryption (v1.4+)

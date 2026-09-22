@@ -244,7 +244,17 @@ public:
   {
     return parseHandshakeMessage(code) == ConnectionResult::Disconnect;
   }
+
+  bool parseMessageReturnsOkay(const uint8_t *code)
+  {
+    return parseMessage(code) == ConnectionResult::Okay;
+  }
 };
+
+const uint8_t *code(const char *message)
+{
+  return reinterpret_cast<const uint8_t *>(message);
+}
 
 Client *undereferenceableClient()
 {
@@ -326,6 +336,34 @@ void ServerProxyTests::parseHandshakeMessage_protocolError_queuesRefusalRequest(
   QVERIFY(request->kind() == Client::DisconnectRequest::Kind::Refuse);
   QVERIFY(request->refusalReason() == deskflow::core::ConnectionRefusal::ProtocolError);
   QCOMPARE(QString::fromUtf8(request->message()), QStringLiteral("server reported a protocol error"));
+}
+
+void ServerProxyTests::parseMessage_gestureSwipeUnknownDirection_isIgnored()
+{
+  RecordingEventQueue events;
+  FakeStream stream;
+  TestServerProxy proxy(undereferenceableClient(), &stream, &events);
+
+  // a newer server may send directions this client does not know; reaching
+  // the client here would crash on the undereferenceable pointer
+  for (const char value : {'\x00', '\x05', '\xFF'}) {
+    stream.push(std::string(1, value));
+    QVERIFY(proxy.parseMessageReturnsOkay(code(kMsgDGestureSwipe)));
+  }
+
+  QVERIFY(!stream.isReady());
+  QVERIFY(events.addedEvents().empty());
+}
+
+void ServerProxyTests::parseMessage_gestureSwipeTruncated_isIgnored()
+{
+  RecordingEventQueue events;
+  FakeStream stream;
+  TestServerProxy proxy(undereferenceableClient(), &stream, &events);
+
+  // the direction byte never arrives
+  QVERIFY(proxy.parseMessageReturnsOkay(code(kMsgDGestureSwipe)));
+  QVERIFY(events.addedEvents().empty());
 }
 
 QTEST_MAIN(ServerProxyTests)

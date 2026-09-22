@@ -221,6 +221,10 @@ ServerProxy::ConnectionResult ServerProxy::parseMessage(const uint8_t *code)
     mouseWheel();
   }
 
+  else if (memcmp(code, kMsgDGestureSwipe, 4) == 0) {
+    gestureSwipe();
+  }
+
   else if (memcmp(code, kMsgDKeyDown, 4) == 0) {
     uint16_t id = 0;
     uint16_t mask = 0;
@@ -756,6 +760,30 @@ void ServerProxy::mouseWheel()
 
   // forward
   m_client->mouseWheel(xDelta, yDelta);
+}
+
+void ServerProxy::gestureSwipe()
+{
+  // get mouse up to date
+  flushCompressedMouse();
+
+  // parse
+  uint8_t value = 0;
+  if (!ProtocolUtil::readf(m_stream, kMsgDGestureSwipe + 4, &value)) {
+    LOG_WARN("failed to read gesture swipe from server");
+    return;
+  }
+
+  // newer servers may send directions this client does not understand
+  const auto direction = swipeDirectionFromWire(value);
+  if (!direction) {
+    LOG_DEBUG("ignoring unknown gesture swipe direction %d", value);
+    return;
+  }
+  LOG_VERBOSE("recv gesture swipe %s", swipeDirectionName(*direction));
+
+  // forward
+  m_client->gestureSwipe(*direction);
 }
 
 void ServerProxy::screensaver()

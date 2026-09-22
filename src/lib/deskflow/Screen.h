@@ -8,6 +8,7 @@
 #pragma once
 
 #include "deskflow/ClipboardTypes.h"
+#include "deskflow/GestureTypes.h"
 #include "deskflow/IScreen.h"
 #include "deskflow/KeyTypes.h"
 #include "deskflow/MouseTypes.h"
@@ -163,6 +164,12 @@ public:
   Each wheel click should generate a delta of +/-120.
   */
   void mouseWheel(int32_t xDelta, int32_t yDelta) const;
+
+  //! Notify of trackpad swipe
+  /*!
+  Synthesize a multi-finger trackpad swipe in \c direction.
+  */
+  void gestureSwipe(SwipeDirection direction) const;
 
   //! Notify of options changes
   /*!
