@@ -85,8 +85,16 @@ layout change on a future OS fails the build rather than silently misbehaving.
 - **Swipes are discrete.** The client replays a complete swipe as soon as the server
   knows its direction, so the remote Space switches instantly, without following the
   fingers.
-- **macOS 27 or later on both ends.** Earlier releases encode direction differently and
-  are not verified; the server does not forward from them and the client ignores swipes.
+- **Server on macOS 27 or later.** Swipe recognition is only verified against macOS 27
+  event streams, so older servers do not forward swipes.
+- **Clients before macOS 27 use the legacy layout** from iss: no IOHID payload, direction
+  in field 135 and a ±400 ending velocity, with the opposite sign to macOS 27 for the
+  same navigation. iss only covers horizontal swipes, so the vertical sign (Mission
+  Control) is inferred by applying the same flip and must be confirmed on a real
+  macOS 26 client. If up and down come out swapped there, only vertical needs flipping
+  in `legacyDirectionSign`.
+- The build targets macOS 26 (`macos_min` in the justfile). Homebrew's OpenSSL, linked
+  statically, sets that floor.
 - `CGSGetActiveSpace` and `CGSCopyManagedDisplaySpaces` resolve only from the dyld shared
   cache. Static linking against SkyLight fails; use `dlopen`/`dlsym` as `spaces.c` does.
 - `CGSGetActiveSpace` can lag behind the Dock right after a synthetic switch. Allow a short

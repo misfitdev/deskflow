@@ -720,14 +720,10 @@ void OSXScreen::fakeMouseWheel(ScrollDelta delta) const
 
 void OSXScreen::fakeGestureSwipe(SwipeDirection direction) const
 {
-  if (!deskflow::osx::isDockSwipeSupported()) {
-    LOG_DEBUG(
-        "ignoring trackpad swipe %s, synthesizing swipes requires macOS 27 or later", swipeDirectionName(direction)
-    );
-    return;
-  }
-
-  LOG_VERBOSE("faking trackpad swipe %s", swipeDirectionName(direction));
+  LOG_VERBOSE(
+      "faking trackpad swipe %s (%s format)", swipeDirectionName(direction),
+      deskflow::osx::currentDockSwipeFormat() == deskflow::osx::DockSwipeFormat::Legacy ? "legacy" : "macOS 27"
+  );
   if (!deskflow::osx::postDockSwipe(direction)) {
     LOG_WARN("failed to synthesize trackpad swipe %s", swipeDirectionName(direction));
   }
@@ -1157,7 +1153,7 @@ void OSXScreen::onDockGesture(CGEventRef event)
     return;
   }
 
-  if (!deskflow::osx::isDockSwipeSupported()) {
+  if (!deskflow::osx::canCaptureDockSwipes()) {
     static bool logged = false;
     if (!logged) {
       LOG_INFO("trackpad swipes are only forwarded from macOS 27 or later");

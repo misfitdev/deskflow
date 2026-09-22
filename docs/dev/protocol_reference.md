@@ -502,7 +502,7 @@ For platform-specific implementation details, refer to:
 - **Trackpad Swipes** (v1.9+)
   - Multi-finger swipes for Spaces and Mission Control (@ref kMsgDGestureSwipe)
   - Sent once per swipe, as soon as its direction is known
-  - macOS 27 or later on both ends; other secondaries ignore the message
+  - Sent from macOS 27 or later; replayed on macOS 26 or later; other secondaries ignore the message
 
 - **Security Features**
   - TLS/SSL encryption (v1.4+)

@@ -9,6 +9,7 @@
 #include <mach/mach_time.h>
 #include <sys/sysctl.h>
 
+#include <cfloat>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,11 +19,13 @@ namespace deskflow::osx {
 namespace {
 
 // Undocumented WindowServer event fields and values. Derived from
-// joshuarli/iss (0BSD) and verified on macOS 27 against real trackpad swipes;
-// see docs/dev/macos-gestures/README.md. Expect these to need re-deriving when
-// a future macOS release changes the dock swipe event format.
+// joshuarli/iss (0BSD). The macOS 27 layout is verified against real trackpad
+// swipes; the legacy layout is iss's pre-27 path. See
+// docs/dev/macos-gestures/README.md. Expect these to need re-deriving when a
+// future macOS release changes the dock swipe event format.
 const CGEventField kFieldCGSEventType = static_cast<CGEventField>(55);
 const CGEventField kFieldGestureHIDType = static_cast<CGEventField>(110);
+const CGEventField kFieldScrollY = static_cast<CGEventField>(119);
 const CGEventField kFieldSwipeMotion = static_cast<CGEventField>(123);
 const CGEventField kFieldSwipeProgress = static_cast<CGEventField>(124);
 const CGEventField kFieldSwipePositionX = static_cast<CGEventField>(125);
@@ -31,7 +34,9 @@ const CGEventField kFieldSwipeVelocityX = static_cast<CGEventField>(129);
 const CGEventField kFieldSwipeVelocityY = static_cast<CGEventField>(130);
 const CGEventField kFieldGesturePhase = static_cast<CGEventField>(132);
 const CGEventField kFieldGesturePhaseAlias = static_cast<CGEventField>(134);
+const CGEventField kFieldGestureFlagBits = static_cast<CGEventField>(135);
 const CGEventField kFieldZoomDeltaY = static_cast<CGEventField>(138);
+const CGEventField kFieldZoomDeltaX = static_cast<CGEventField>(139);
 const CGEventField kFieldSourceTimestamp = static_cast<CGEventField>(169);
 const CGEventField kFieldRawIOHIDPayload = static_cast<CGEventField>(4205);
 
@@ -49,6 +54,7 @@ const int64_t kPhaseCancelled = 8;
 
 // Large enough that the Dock completes the swipe instead of snapping back.
 const double kSyntheticEndVelocity = 9999.0;
+const double kLegacySyntheticEndVelocity = 400.0;
 
 // macOS 27 rejects synthetic dock swipes unless each carries a serialized raw
 // IOHID queue element in field 4205. Layouts must match the OS byte for byte.
@@ -235,7 +241,47 @@ ScopedCGEvent attachIOHIDPayload(CGEventRef event)
   return ScopedCGEvent(CGEventCreateFromData(kCFAllocatorDefault, augmentedData.get()));
 }
 
-ScopedCGEvent createDockEvent(SwipeDirection direction, int64_t phase)
+// Legacy swipes use the opposite sign to macOS 27 for the same navigation:
+// iss replays "next Space" with a positive sign before 27 and a negative one
+// on 27. Only the horizontal case is known; vertical assumes the same flip.
+double legacyDirectionSign(SwipeDirection direction)
+{
+  return -directionSign(direction);
+}
+
+ScopedCGEvent createLegacyDockEvent(SwipeDirection direction, int64_t phase)
+{
+  ScopedCGEvent event(CGEventCreate(nullptr));
+  if (!event) {
+    return nullptr;
+  }
+
+  const bool horizontal = isHorizontal(direction);
+  const double sign = legacyDirectionSign(direction);
+
+  // the Dock reads direction from the bit pattern of the smallest float with
+  // that sign; this also makes the switch instant
+  const float flags = sign > 0.0 ? FLT_TRUE_MIN : -FLT_TRUE_MIN;
+  int32_t flagBits = 0;
+  std::memcpy(&flagBits, &flags, sizeof(flagBits));
+
+  CGEventSetIntegerValueField(event.get(), kFieldCGSEventType, kCGSEventDockControl);
+  CGEventSetIntegerValueField(event.get(), kFieldGestureHIDType, kHIDEventTypeDockSwipe);
+  CGEventSetIntegerValueField(event.get(), kFieldGesturePhase, phase);
+  CGEventSetIntegerValueField(event.get(), kFieldGestureFlagBits, flagBits);
+  CGEventSetIntegerValueField(event.get(), kFieldSwipeMotion, horizontal ? kMotionHorizontal : kMotionVertical);
+  CGEventSetDoubleValueField(event.get(), kFieldScrollY, 0);
+  CGEventSetDoubleValueField(event.get(), kFieldZoomDeltaX, FLT_TRUE_MIN);
+  if (phase == kPhaseEnded) {
+    CGEventSetDoubleValueField(
+        event.get(), horizontal ? kFieldSwipeVelocityX : kFieldSwipeVelocityY, sign * kLegacySyntheticEndVelocity
+    );
+  }
+
+  return event;
+}
+
+ScopedCGEvent createPayloadDockEvent(SwipeDirection direction, int64_t phase)
 {
   ScopedCGEvent event(CGEventCreate(nullptr));
   if (!event) {
@@ -274,10 +320,15 @@ ScopedCGEvent createCompanionEvent()
 
 } // namespace
 
-bool isDockSwipeSupported()
+DockSwipeFormat currentDockSwipeFormat()
 {
-  static const bool supported = macOSMajorVersion() >= 27;
-  return supported;
+  static const auto format = macOSMajorVersion() >= 27 ? DockSwipeFormat::IOHIDPayload : DockSwipeFormat::Legacy;
+  return format;
+}
+
+bool canCaptureDockSwipes()
+{
+  return currentDockSwipeFormat() == DockSwipeFormat::IOHIDPayload;
 }
 
 bool isDockGestureEvent(CGEventRef event)
@@ -338,11 +389,12 @@ void DockSwipeDetector::reset()
   m_fired = false;
 }
 
-std::vector<ScopedCGEvent> createDockSwipeEvents(SwipeDirection direction)
+std::vector<ScopedCGEvent> createDockSwipeEvents(SwipeDirection direction, DockSwipeFormat format)
 {
   std::vector<ScopedCGEvent> events;
   for (const int64_t phase : {kPhaseBegan, kPhaseChanged, kPhaseEnded}) {
-    auto dock = createDockEvent(direction, phase);
+    auto dock = format == DockSwipeFormat::IOHIDPayload ? createPayloadDockEvent(direction, phase)
+                                                        : createLegacyDockEvent(direction, phase);
     auto companion = createCompanionEvent();
     if (!dock || !companion) {
       return {};
@@ -355,7 +407,7 @@ std::vector<ScopedCGEvent> createDockSwipeEvents(SwipeDirection direction)
 
 bool postDockSwipe(SwipeDirection direction)
 {
-  const auto events = createDockSwipeEvents(direction);
+  const auto events = createDockSwipeEvents(direction, currentDockSwipeFormat());
   if (events.empty()) {
     return false;
   }

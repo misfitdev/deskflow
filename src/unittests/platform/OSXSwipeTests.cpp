@@ -10,10 +10,14 @@
 
 #include <QTest>
 
+#include <algorithm>
+#include <cfloat>
+#include <cstring>
 #include <optional>
 #include <vector>
 
 using deskflow::osx::DockSwipeDetector;
+using deskflow::osx::DockSwipeFormat;
 using deskflow::osx::ScopedCGEvent;
 
 namespace {
@@ -28,6 +32,7 @@ const auto kFieldProgress = static_cast<CGEventField>(124);
 const auto kFieldVelocityX = static_cast<CGEventField>(129);
 const auto kFieldVelocityY = static_cast<CGEventField>(130);
 const auto kFieldPhase = static_cast<CGEventField>(132);
+const auto kFieldFlagBits = static_cast<CGEventField>(135);
 
 const int64_t kDockControl = 30;
 const int64_t kGesture = 29;
@@ -84,6 +89,34 @@ std::vector<ScopedCGEvent> realisticSwipe(int64_t motion, double sign)
   }
   events.push_back(dockEvent(motion, kEnded, sign * 1.1168, sign * 5.7));
   return events;
+}
+
+const SwipeDirection kAllDirections[] = {
+    SwipeDirection::Left, SwipeDirection::Right, SwipeDirection::Up, SwipeDirection::Down
+};
+
+bool isHorizontal(SwipeDirection direction)
+{
+  return direction == SwipeDirection::Left || direction == SwipeDirection::Right;
+}
+
+// Velocity on the swipe's own axis, carried by the ended dock event.
+double endVelocity(SwipeDirection direction, DockSwipeFormat format)
+{
+  const auto events = deskflow::osx::createDockSwipeEvents(direction, format);
+  return CGEventGetDoubleValueField(events.at(4).get(), isHorizontal(direction) ? kFieldVelocityX : kFieldVelocityY);
+}
+
+// Whether the serialized event carries the raw IOHID payload field: a 2 byte
+// length (68 for a began swipe, which has no velocity record) followed by the
+// field tag 4205.
+bool hasBeganPayload(CGEventRef event)
+{
+  const std::unique_ptr<const __CFData, deskflow::osx::CFReleaser> data(CGEventCreateData(nullptr, event));
+  const auto *bytes = CFDataGetBytePtr(data.get());
+  const auto *end = bytes + CFDataGetLength(data.get());
+  const uint8_t marker[] = {0x00, 0x44, 0x10, 0x6D};
+  return std::search(bytes, end, std::begin(marker), std::end(marker)) != end;
 }
 
 } // namespace
@@ -161,7 +194,7 @@ void OSXSwipeTests::detector_reset_forgetsSwipeInProgress()
 
 void OSXSwipeTests::createDockSwipeEvents_pairsDockAndCompanionEvents()
 {
-  const auto events = deskflow::osx::createDockSwipeEvents(SwipeDirection::Right);
+  const auto events = deskflow::osx::createDockSwipeEvents(SwipeDirection::Right, DockSwipeFormat::IOHIDPayload);
   QCOMPARE(events.size(), static_cast<size_t>(6));
 
   const int64_t phases[] = {kBegan, kChanged, kEnded};
@@ -184,10 +217,51 @@ void OSXSwipeTests::createDockSwipeEvents_roundTripsThroughDetector()
 {
   for (const auto direction : {SwipeDirection::Left, SwipeDirection::Right, SwipeDirection::Up, SwipeDirection::Down}) {
     DockSwipeDetector detector;
-    const auto events = deskflow::osx::createDockSwipeEvents(direction);
+    const auto events = deskflow::osx::createDockSwipeEvents(direction, DockSwipeFormat::IOHIDPayload);
     QVERIFY(!events.empty());
     QVERIFY2(feedAll(detector, events) == std::vector{direction}, swipeDirectionName(direction));
   }
+}
+
+void OSXSwipeTests::createDockSwipeEvents_legacyMatchesIssHorizontal()
+{
+  // iss replays "next Space" before macOS 27 as a positive flag and velocity
+  const auto events = deskflow::osx::createDockSwipeEvents(SwipeDirection::Right, DockSwipeFormat::Legacy);
+  QCOMPARE(events.size(), static_cast<size_t>(6));
+
+  const float positive = FLT_TRUE_MIN;
+  int32_t positiveBits = 0;
+  std::memcpy(&positiveBits, &positive, sizeof(positiveBits));
+
+  const int64_t phases[] = {kBegan, kChanged, kEnded};
+  for (size_t i = 0; i < 3; ++i) {
+    CGEventRef dock = events[i * 2].get();
+    QCOMPARE(CGEventGetIntegerValueField(dock, kFieldCGSEventType), kDockControl);
+    QCOMPARE(CGEventGetIntegerValueField(dock, kFieldHIDType), kDockSwipe);
+    QCOMPARE(CGEventGetIntegerValueField(dock, kFieldMotion), kHorizontal);
+    QCOMPARE(CGEventGetIntegerValueField(dock, kFieldPhase), phases[i]);
+    QCOMPARE(static_cast<int32_t>(CGEventGetIntegerValueField(dock, kFieldFlagBits)), positiveBits);
+    QCOMPARE(CGEventGetIntegerValueField(events[i * 2 + 1].get(), kFieldCGSEventType), kGesture);
+  }
+  QCOMPARE(CGEventGetDoubleValueField(events[4].get(), kFieldVelocityX), 400.0);
+}
+
+void OSXSwipeTests::createDockSwipeEvents_legacyFlipsSignOfMacOS27()
+{
+  for (const auto direction : kAllDirections) {
+    const double legacy = endVelocity(direction, DockSwipeFormat::Legacy);
+    const double current = endVelocity(direction, DockSwipeFormat::IOHIDPayload);
+    QVERIFY2(legacy != 0.0 && current != 0.0, swipeDirectionName(direction));
+    QVERIFY2((legacy > 0.0) != (current > 0.0), swipeDirectionName(direction));
+  }
+}
+
+void OSXSwipeTests::createDockSwipeEvents_onlyMacOS27CarriesPayload()
+{
+  const auto legacy = deskflow::osx::createDockSwipeEvents(SwipeDirection::Up, DockSwipeFormat::Legacy);
+  const auto current = deskflow::osx::createDockSwipeEvents(SwipeDirection::Up, DockSwipeFormat::IOHIDPayload);
+  QVERIFY(hasBeganPayload(current[0].get()));
+  QVERIFY(!hasBeganPayload(legacy[0].get()));
 }
 
 QTEST_MAIN(OSXSwipeTests)

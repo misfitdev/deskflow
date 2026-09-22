@@ -135,7 +135,7 @@ void stop(CFRunLoopTimerRef, void *)
 int main(int argc, char **argv)
 {
   const double seconds = argc > 1 ? std::atof(argv[1]) : 45.0;
-  if (!deskflow::osx::isDockSwipeSupported()) {
+  if (!deskflow::osx::canCaptureDockSwipes()) {
     std::fprintf(stderr, "requires macOS 27 or later\n");
     return 2;
   }

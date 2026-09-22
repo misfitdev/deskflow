@@ -22,4 +22,7 @@ private Q_SLOTS:
   void detector_reset_forgetsSwipeInProgress();
   void createDockSwipeEvents_pairsDockAndCompanionEvents();
   void createDockSwipeEvents_roundTripsThroughDetector();
+  void createDockSwipeEvents_legacyMatchesIssHorizontal();
+  void createDockSwipeEvents_legacyFlipsSignOfMacOS27();
+  void createDockSwipeEvents_onlyMacOS27CarriesPayload();
 };

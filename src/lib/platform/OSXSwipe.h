@@ -38,12 +38,24 @@ struct CFReleaser
 
 using ScopedCGEvent = std::unique_ptr<std::remove_pointer_t<CGEventRef>, CFReleaser>;
 
-//! Whether this macOS release uses the swipe event format implemented here
+//! Synthetic swipe layout a macOS release accepts
+enum class DockSwipeFormat
+{
+  //! Before macOS 27: event fields only, direction in the gesture flags
+  Legacy,
+  //! macOS 27 and later: event fields plus a serialized IOHID payload
+  IOHIDPayload
+};
+
+//! The synthetic swipe layout the running macOS release accepts
+DockSwipeFormat currentDockSwipeFormat();
+
+//! Whether real swipes can be recognized on the running macOS release
 /*!
-Only macOS 27 and later is supported: earlier releases encode swipe direction
-differently and need a different synthetic event layout.
+Only macOS 27 and later: recognition is only verified against the event
+streams that release produces.
 */
-bool isDockSwipeSupported();
+bool canCaptureDockSwipes();
 
 //! Whether \c event is a DockControl or companion gesture event
 bool isDockGestureEvent(CGEventRef event);
@@ -72,11 +84,12 @@ private:
 Returns DockControl and companion events in posting order, or an empty
 vector if any event could not be created.
 */
-std::vector<ScopedCGEvent> createDockSwipeEvents(SwipeDirection direction);
+std::vector<ScopedCGEvent> createDockSwipeEvents(SwipeDirection direction, DockSwipeFormat format);
 
 //! Post a synthetic swipe to the current session
 /*!
-Returns false if the events could not be created.
+Uses the layout the running macOS release accepts. Returns false if the
+events could not be created.
 */
 bool postDockSwipe(SwipeDirection direction);
 
