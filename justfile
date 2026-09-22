@@ -24,7 +24,7 @@ clean:
 
 # Bundle Qt into the .app and re-sign, making it relocatable
 bundle: build
-    "$MISE_CONFIG_ROOT/.qt/$QT_VERSION/macos/bin/macdeployqt" build/bin/Deskflow.app
+    "$CMAKE_PREFIX_PATH/bin/macdeployqt" build/bin/Deskflow.app
     # macdeployqt rewrites the binaries, which invalidates the signature.
     codesign --force --deep --sign - build/bin/Deskflow.app
     codesign --verify --deep --strict build/bin/Deskflow.app
