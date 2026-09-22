@@ -6,9 +6,12 @@ setup:
     mise install
     mise run qt
 
+# Oldest macOS the build runs on. Homebrew's OpenSSL, linked statically, needs 26.
+macos_min := "26.0"
+
 # Configure the build
 configure: setup
-    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET={{macos_min}}
 
 # Build Deskflow
 build: configure
