@@ -1,10 +1,12 @@
-# macOS synthetic swipe gestures — reference spike
+# macOS trackpad swipe gestures
 
-Reference code for synthesizing multi-finger swipe gestures on macOS, so a Deskflow
-client can reproduce Spaces / Mission Control navigation driven from a remote trackpad.
+Reference code and findings behind Deskflow's trackpad swipe forwarding (protocol 1.9),
+which lets a remote Mac trackpad switch Spaces and open Mission Control on a client.
 
-**This is not part of the build.** It is a standalone, verified reference kept in-tree
-because re-deriving the constants is the expensive part of the work.
+The shipping implementation is `src/lib/platform/OSXSwipe.{h,cpp}`, wired into
+`OSXScreen`, with tests in `src/unittests/platform/OSXSwipeTests.cpp`. The files here
+are **not part of the build**: they are standalone tools for re-verifying the private
+event format when a macOS release breaks it.
 
 ## Status
 
@@ -18,6 +20,19 @@ Accessibility permission — no SIP disable, no code injection, no driver or sys
 
 Measured programmatically rather than visually.
 
+Live end-to-end, using `replay_test` against the real `OSXSwipe.cpp` (2026-09-22):
+17 real swipes, each decoded exactly once and replayed as the same navigation.
+Up opened Mission Control, down closed it, and right switched to the next Space.
+
+## Capture
+
+- Deskflow's existing `kCGHIDEventTap` sees DockControl events. A listen-only probe saw
+  identical streams at the HID and session taps, so no extra tap is needed.
+- A real swipe is `began`, then a run of `changed` events with progress growing
+  toward ±1, then `ended` with a velocity of the same sign as the progress.
+- The detector fires on the first non-zero progress, or on the ending velocity for a
+  flick that reports no progress.
+
 ## Files
 
 - `swipe_spike.c` — posts a synthetic horizontal swipe. `swipe_spike left|right`.
@@ -25,12 +40,21 @@ Measured programmatically rather than visually.
 - `spaces.c` — counts Spaces per display. Horizontal swipes cannot be tested with only
   one Space; a correct swipe looks like a failure.
 - `mcstate.c` — counts Dock-owned on-screen windows, used to detect Mission Control.
+- `replay_test.cpp` — end-to-end check of `OSXSwipe.cpp`. It swallows each real swipe
+  and replays it through the detector and synthesizer, printing what changed. If
+  swipes still behave normally, capture and synthesis agree with macOS.
 
 Build (each is standalone):
 
     clang -O2 -o swipe_spike swipe_spike.c -framework ApplicationServices -framework CoreFoundation
     clang -O2 -o spaces spaces.c -framework CoreFoundation
     clang -O2 -o mcstate mcstate.c -framework CoreGraphics -framework CoreFoundation
+
+`replay_test` builds from the repository root because it links the real implementation:
+
+    clang++ -std=c++20 -O2 -Isrc/lib -o replay_test \
+      docs/dev/macos-gestures/replay_test.cpp src/lib/platform/OSXSwipe.cpp \
+      -framework ApplicationServices -framework CoreFoundation
 
 ## How it works
 
@@ -56,8 +80,13 @@ layout change on a future OS fails the build rather than silently misbehaving.
 ## Known limits
 
 - **Finger count is not encoded.** Nothing in these events distinguishes a 3-finger from a
-  4-finger swipe; macOS maps both onto the same dock swipe action. Any protocol carrying
-  these should send direction and phase, not a finger count.
+  4-finger swipe; macOS maps both onto the same dock swipe action. The protocol therefore
+  sends only a direction.
+- **Swipes are discrete.** The client replays a complete swipe as soon as the server
+  knows its direction, so the remote Space switches instantly, without following the
+  fingers.
+- **macOS 27 or later on both ends.** Earlier releases encode direction differently and
+  are not verified; the server does not forward from them and the client ignores swipes.
 - `CGSGetActiveSpace` and `CGSCopyManagedDisplaySpaces` resolve only from the dyld shared
   cache. Static linking against SkyLight fails; use `dlopen`/`dlsym` as `spaces.c` does.
 - `CGSGetActiveSpace` can lag behind the Dock right after a synthetic switch. Allow a short

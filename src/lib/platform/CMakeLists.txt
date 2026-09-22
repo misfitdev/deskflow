@@ -102,6 +102,8 @@ elseif(APPLE)
     OSXScreenSaverControl.h
     OSXScreenSaverUtil.h
     OSXScreenSaverUtil.m
+    OSXSwipe.cpp
+    OSXSwipe.h
   )
 elseif(UNIX)
   set(PLATFORM_SOURCES

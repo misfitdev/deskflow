@@ -11,6 +11,7 @@
 #include "deskflow/PlatformScreen.h"
 #include "platform/OSXClipboard.h"
 #include "platform/OSXPowerManager.h"
+#include "platform/OSXSwipe.h"
 
 #include <Carbon/Carbon.h>
 #include <IOKit/IOMessage.h>
@@ -76,6 +77,7 @@ public:
   void fakeMouseMove(int32_t x, int32_t y) override;
   void fakeMouseRelativeMove(int32_t dx, int32_t dy) const override;
   void fakeMouseWheel(ScrollDelta delta) const override;
+  void fakeGestureSwipe(SwipeDirection direction) const override;
 
   // IPlatformScreen overrides
   void enable() override;
@@ -119,6 +121,7 @@ private:
   // of the button pressed using the mac button mapping.
   bool onMouseButton(bool pressed, uint16_t macButton);
   bool onMouseWheel(int32_t xDelta, int32_t yDelta) const;
+  void onDockGesture(CGEventRef event);
 
   void constructMouseButtonEventMap();
 
@@ -223,6 +226,9 @@ private:
 
   // true if mouse has entered the screen
   bool m_isOnScreen;
+
+  // recognizes trackpad swipes to forward while the cursor is on a client
+  deskflow::osx::DockSwipeDetector m_swipeDetector;
 
   // the display
   CGDirectDisplayID m_displayID;

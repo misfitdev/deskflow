@@ -718,6 +718,21 @@ void OSXScreen::fakeMouseWheel(ScrollDelta delta) const
   }
 }
 
+void OSXScreen::fakeGestureSwipe(SwipeDirection direction) const
+{
+  if (!deskflow::osx::isDockSwipeSupported()) {
+    LOG_DEBUG(
+        "ignoring trackpad swipe %s, synthesizing swipes requires macOS 27 or later", swipeDirectionName(direction)
+    );
+    return;
+  }
+
+  LOG_VERBOSE("faking trackpad swipe %s", swipeDirectionName(direction));
+  if (!deskflow::osx::postDockSwipe(direction)) {
+    LOG_WARN("failed to synthesize trackpad swipe %s", swipeDirectionName(direction));
+  }
+}
+
 void OSXScreen::showCursor()
 {
   LOG_DEBUG("showing cursor");
@@ -867,6 +882,7 @@ void OSXScreen::disable()
 void OSXScreen::enter()
 {
   m_isOnScreen = true;
+  m_swipeDetector.reset();
   showCursor();
 
   if (m_isPrimary) {
@@ -910,6 +926,7 @@ void OSXScreen::leave()
 
   // now off screen
   m_isOnScreen = false;
+  m_swipeDetector.reset();
 }
 
 bool OSXScreen::setClipboard(ClipboardID, const IClipboard *src)
@@ -1131,6 +1148,28 @@ bool OSXScreen::onMouseWheel(int32_t xDelta, int32_t yDelta) const
   LOG_VERBOSE("event: button wheel delta=%+d,%+d", xDelta, yDelta);
   sendEvent(EventTypes::PrimaryScreenWheel, WheelInfo::alloc(xDelta, yDelta));
   return true;
+}
+
+void OSXScreen::onDockGesture(CGEventRef event)
+{
+  // on screen, swipes belong to this Mac and pass through untouched
+  if (m_isOnScreen) {
+    return;
+  }
+
+  if (!deskflow::osx::isDockSwipeSupported()) {
+    static bool logged = false;
+    if (!logged) {
+      LOG_INFO("trackpad swipes are only forwarded from macOS 27 or later");
+      logged = true;
+    }
+    return;
+  }
+
+  if (const auto direction = m_swipeDetector.feed(event)) {
+    LOG_VERBOSE("event: trackpad swipe %s", swipeDirectionName(*direction));
+    sendEvent(EventTypes::PrimaryScreenSwipe, SwipeInfo::alloc(*direction));
+  }
 }
 
 void OSXScreen::displayReconfigurationCallback(
@@ -1800,6 +1839,11 @@ CGEventRef OSXScreen::handleCGInputEvent(CGEventTapProxy proxy, CGEventType type
   case NX_NULLEVENT:
     break;
   default:
+    if (deskflow::osx::isDockGestureEvent(event)) {
+      screen->onDockGesture(event);
+      break;
+    }
+
     if (type == NX_SYSDEFINED) {
       if (isMediaKeyEvent(event)) {
         LOG_VERBOSE("detected media key event");
